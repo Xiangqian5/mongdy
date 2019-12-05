@@ -135,7 +135,7 @@ class TCPRelayHandler(object):
                 data = data[s:]
                 uncomplete = True
         except (OSError, IOError) as e:
-            error_no = errno_from_exception(e)
+            error_no = eventloop.errno_from_exception(e)
             if error_no in (errno.EAGAIN, errno.EINPROGRESS, errno.EWOULDBLOCK):
                 uncomplete = True
             else:
@@ -352,7 +352,7 @@ class TCPRelay(object):
         self._fd_to_handlers = {}
 
         if is_local:
-            listen_addr = config["local_addr"]
+            listen_addr = config["local_address"]
             listen_port = config["local_port"]
         else:
             listen_addr = config["server"]
