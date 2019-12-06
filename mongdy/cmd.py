@@ -24,16 +24,20 @@ def execCommands(cmds):
     for i in range(cnt):
         proc[i].wait()
 
-    logging.log(logging.INFO, out[0])
-    return "".join(out[0])
+    ret = out[0].decode('utf-8')
+    logging.log(logging.INFO, ret)
+    return ret
 
 def execCommandLine(command_line, pipe = "||"):
     try:
         cmds = command_line.split(pipe)
         return execCommands(cmds)
+
     except Exception as e:
+        import traceback
         logging.log(logging.DEBUG, "CommandLine error: %s", e)
+        traceback.print_exc()
         return
     
 if __name__ == "__main__":
-    execCommandLine("ls -l || grep tcp || grep rel")
+    execCommandLine("ls -l || grep py")

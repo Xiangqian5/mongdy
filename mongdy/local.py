@@ -32,7 +32,9 @@ def main():
         loop.run()
     except Exception as e:
         #shell.print_exception(e)
-        logging.log(logging.ERROR, e)
+        import traceback
+        traceback.print_exc()
+        #logging.log(logging.ERROR, e)
         sys.exit(1)
 
 

@@ -8,7 +8,8 @@ import time
 import common
 
 def recv(sock):
-    print(sock.recv(1024000))
+    msg = sock.recv(1024000)
+    print(msg.decode())
 
 def select_client():
     server_addrs = ('127.0.0.1', 1083)
@@ -19,13 +20,13 @@ def select_client():
     print(common.to_str(nego))
     client.send(nego)
     msg = client.recv(1024)
-    print(ord(msg[0]))
-    print(ord(msg[1]))
+    #print(ord(msg[0]))
+    #print(ord(msg[1]))
 
     msg = b"Hello:I'm client!"
-    msg = b"ls -l"
     msg = b"tree"
     msg = b"pwd"
+    msg = b"ls -l || sort\r\n\r\n"
 
     client.send(msg)
     time.sleep(0.1)
