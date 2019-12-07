@@ -15,8 +15,8 @@ import random
 import common
 import json
 
-BUF_SIZE = 32 * 1024
-BUF_SIZE = 10
+#BUF_SIZE = 32 * 1024
+BUF_SIZE = 5
 
 MSG_FASTOPEN = 0x20000000
 
@@ -167,7 +167,7 @@ class TCPRelayHandler(object):
                 logging.debug("_write_to_sock:%s", e)
                 self.destroy(sock)
                 return False
-
+        
         if uncomplete:
             if sock == self._local_sock:
                 self._data_to_write_to_local.append(data)
@@ -255,37 +255,34 @@ class TCPRelayHandler(object):
             self.destroy(sock)
             return
 
-        logging.log(logging.INFO, "###client data: %s", data)
+        logging.log(logging.INFO, ">>>>>>>>>>>>>>>>>>>>>>>client data: %s", data)
 
         if self._is_local:
             if self._stage.setdefault(fd, STAGE_INIT) in [STAGE_INIT,STAGE_NEGO]:
                 self._capability_nego(data, sock)
                 return
             elif self._stage[fd] == STAGE_STREAM:
-                send_data = data
-                for fd in self._remote_sock:
-                    if self._data_to_write_to_remote[fd]:
-                        self._data_to_write_to_remote[fd].append(data)
-                        send_data = b''.join(self._data_to_write_to_remote[fd])
-                        self._data_to_write_to_remote[fd] = []
-                    logging.log(logging.INFO, "#################: data:%s sock:%s  remote:%s", send_data, sock, self._remote_sock[fd])
-                    self._write_to_sock(send_data, self._remote_sock[fd])
+                for _fd in self._remote_sock:
+                    send_data = data
+                    if self._data_to_write_to_remote[_fd]:
+                        self._data_to_write_to_remote[_fd].append(data)
+                        send_data = b''.join(self._data_to_write_to_remote[_fd])
+                        self._data_to_write_to_remote[_fd] = []
+                    logging.log(logging.DEBUG, "#################: data:%s sock:%s  remote:%s", send_data, sock, self._remote_sock[_fd])
+                    self._write_to_sock(send_data, self._remote_sock[_fd])
                 return
             elif self._stage[fd] == STAGE_CONNECTING:
                 self._handle_stage_connecting(data)
         else:
             #exec C cmd
             data = data.decode()
-            logging.log(logging.INFO, "###############EXEC DATA: %s", data)
             self._data_to_exec.append(data)
-            logging.log(logging.INFO, "###############EXEC DATA: %s", self._data_to_exec)
             cmd_line = "".join(self._data_to_exec)
-            logging.log(logging.INFO, "###############EXEC DATA: %s", cmd_line)
+            logging.log(logging.INFO, ">>>>>>>>>>>>>>>>>>>>>>>EXEC DATA: %s", self._data_to_exec)
             if cmd_line[-4:] == "\r\n\r\n":
-                logging.log(logging.INFO, "###############EXEC DATA: %s", cmd_line[:-4])
                 resp = cmd.execCommandLine(common.to_str(cmd_line[:-4]), pipe = "||")
                 self._data_to_exec = []
-                self._write_to_sock(resp, sock)
+                self._write_to_sock(common.to_bytes(resp), sock)
 
     def _on_remote_read(self, sock):
         # handle all remote read events
@@ -333,6 +330,7 @@ class TCPRelayHandler(object):
             self._data_to_write_to_remote[fd] = []
             self._write_to_sock(data, sock)
         else:
+            logging.debug("_on_remote_write: WAIT_STATUS_READING")
             self._update_stream(STREAM_UP, WAIT_STATUS_READING, sock.fileno())
 
     def _create_remote_socket(self, ip, port):
