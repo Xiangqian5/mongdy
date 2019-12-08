@@ -176,11 +176,17 @@ def get_config(is_local):
     config['port_password'] = config.get('port_password', None)
     config['timeout'] = int(config.get('timeout', 300))
     config['fast_open'] = config.get('fast_open', False)
-    config['pid-file'] = config.get('pid-file', '../log/mongdy.pid')
-    config['log-file'] = config.get('log-file', '../log/mongdy.log')
+    config['pid-file'] = config.get('pid-file', 'log/mongdy.pid')
+    config['log-file'] = config.get('log-file', 'log/mongdy.log')
     config['verbose'] = config.get('verbose', False)
     config['local_address'] = to_str(config.get('local_address', '127.0.0.1'))
     config['local_port'] = config.get('local_port', 1081)
+    config['log_out'] = config.get('log_out', False)
+    config['local_out_dir'] = to_str(config.get('local_out_dir', 'log'))
+    config['programname'] = to_str(config.get('programname', 'mongdy'))
+    if config['log_out']:
+        if not os.path.exists(config['local_out_dir']):
+            os.makedirs(config['local_out_dir'])
 
     if is_local:
         if config.get('server', None) is None:

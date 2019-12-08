@@ -14,6 +14,9 @@ import cmd
 import random
 import common
 import json
+import fcntl
+import stat
+
 
 #BUF_SIZE = 32 * 1024
 BUF_SIZE = 5
@@ -61,6 +64,7 @@ class TCPRelayHandler(object):
         self._data_to_write_to_local = []
         #self._data_to_write_to_remote = []
         self._data_to_write_to_remote = defaultdict(list)
+        self._log_out_handler = defaultdict(list)
         self._data_to_exec = []
         self._client_address = local_sock.getpeername()[:2]
         if 'forbidden_ip' in config:
@@ -69,6 +73,10 @@ class TCPRelayHandler(object):
             self._forbidden_iplist = None
         if is_local:
             self._chosen_server = self._get_server_list()
+        if 'log_out' in config:
+            self._log_out = config['log_out']
+        if 'programname' in config:
+            self._programname = config['programname']
 
         fd_to_handlers[local_sock.fileno()] = self
         local_sock.setblocking(False)
@@ -95,6 +103,35 @@ class TCPRelayHandler(object):
             server_list = [(server, server_port)]
         logging.debug('chosen server list: %s', server_list)
         return server_list
+
+    def _get_log_out_handler(self, sockfd, ip):
+        log_out_file = "%s/%s_%s.log" % (self._config['local_out_dir'].rstrip('/'), self._programname, common.to_str(ip))
+        try:
+            fd = os.open(log_out_file, os.O_RDWR | os.O_APPEND | os.O_CREAT, stat.S_IRUSR | stat.S_IWUSR)
+            flags = fcntl.fcntl(fd, fcntl.F_GETFD)
+            assert flags != -1
+            flags |= fcntl.FD_CLOEXEC
+            r = fcntl.fcntl(fd, fcntl.F_SETFD, flags)
+            assert r != -1
+
+            try:
+                fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB, 0, 0, os.SEEK_SET)
+            except IOError as e:
+                logging.log(logging.ERROR, e)
+                return -1
+
+            self._log_out_handler[sockfd] = fd
+
+            return fd
+        except OSError as e:
+            error_no = eventloop.errno_from_exception(e)
+            if error_no == errno.ENOENT:
+                #mkdir
+                pass
+            else:
+                logging.log(logging.ERROR, e)
+                return -1
+
 
     def  _get_remote_sock(self, fd):
         if fd in self._remote_sock:
@@ -152,6 +189,8 @@ class TCPRelayHandler(object):
 
         uncomplete = False
 
+        s = 0
+
         try:
             l = len(data)
             s = sock.send(common.to_bytes(data))
@@ -185,6 +224,8 @@ class TCPRelayHandler(object):
             else:
                 logging.error('write_all_to_sock:unknown socket')
 
+        return s
+
     def _handle_stage_connecting(self, data):
         if self._is_local:
             #encrypt
@@ -209,6 +250,8 @@ class TCPRelayHandler(object):
                     self._stage[self._local_sock.fileno()] = STAGE_STREAM
                     self._update_stream(STREAM_UP, WAIT_STATUS_READWRITING, self._local_sock.fileno())
                     self._update_stream(STREAM_DOWN, WAIT_STATUS_READING, remote_sock.fileno())
+                    if self._log_out:
+                        self._get_log_out_handler(remote_sock.fileno(), chosen_server[0])
             except (OSError, IOError) as e:
                 if eventloop.errno_from_exception(e) == errno.EINPROGRESS:
                     # in this case data is not sent at all
@@ -236,6 +279,8 @@ class TCPRelayHandler(object):
                     self._stage[self._local_sock.fileno()] = STAGE_STREAM
                     self._update_stream(STREAM_UP, WAIT_STATUS_READWRITING, remote_sock.fileno())
                     self._update_stream(STREAM_DOWN, WAIT_STATUS_READING, remote_sock.fileno())
+                    if self._log_out:
+                        self._get_log_out_handler(remote_sock.fileno(), chosen_server[0])
 
     def _on_local_read(self, sock):
         fd = sock.fileno()
@@ -307,7 +352,13 @@ class TCPRelayHandler(object):
         '''
         try:
             logging.debug("==========_on_remote_read:%s", data)
-            self._write_to_sock(data, self._local_sock)
+            s = self._write_to_sock(data, self._local_sock)
+            if s:
+                sent = data[:s]
+                o_fd = self._log_out_handler[sock.fileno()]
+                os.write(o_fd, sent)
+        except IOError as e:
+            logging.error("_on_remote_read:%s", e)
         except Exception as e:
             logging.debug("_on_remote_read:%s", e)
             # TODO use logging when debug completed
