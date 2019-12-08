@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+service Consul {
+    rpc SayHello (HelloRequest) returns (HelloReply) {}
+}
+
+message HelloRequest {
+    string helloworld = 1;
+}
+
+message HelloReply {
+    string result = 1;
+}
