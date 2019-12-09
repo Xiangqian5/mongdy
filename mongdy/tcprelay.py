@@ -13,13 +13,13 @@ import eventloop
 import cmd
 import random
 import common
+import encrypt
 import json
 import fcntl
 import stat
 
 
-#BUF_SIZE = 32 * 1024
-BUF_SIZE = 5
+BUF_SIZE = 64 * 1024
 
 MSG_FASTOPEN = 0x20000000
 
@@ -59,6 +59,8 @@ class TCPRelayHandler(object):
         self._fastopen_connected = False
         self._stage = dict()
         self._stage[self._local_sock.fileno()] = STAGE_INIT
+        self._local_encryptor = encrypt.Encryptor(config['password'], config['method'])
+        self._encryptor = defaultdict(int)
         self._upstream_status = dict()
         self._downstream_status = dict()
         self._data_to_write_to_local = []
@@ -227,31 +229,33 @@ class TCPRelayHandler(object):
         return s
 
     def _handle_stage_connecting(self, data):
-        if self._is_local:
-            #encrypt
-            pass
         if self._is_local and not self._fastopen_connected and self._config['fast_open']:
             try:
                 self._fastopen_connected = True
                 for chosen_server in self._chosen_server:
                     remote_sock = self._create_remote_socket(chosen_server[0], chosen_server[1])
-                    self._data_to_write_to_remote[remote_sock.fileno()].append(data)
+                    fd = remote_sock.fileno()
+                    lfd = self._local_sock.fileno()
+                    if not self._encryptor:
+                        self._encryptor[fd] = encrypt.Encryptor(self._config['password'], self._config['method'])
+                    data = self._encryptor[fd].encrypt(data)
+                    self._data_to_write_to_remote[fd].append(data)
                     self._loop.add(remote_sock, eventloop.POLL_ERR, self._server)
-                    data = b''.join(self._data_to_write_to_remote[remote_sock.fileno()])
+                    data = b''.join(self._data_to_write_to_remote[fd])
                     l = len(data)
                     s = remote_sock.sendto(data, MSG_FASTOPEN, chosen_server)
                     if s < l:
                         data = data[s:]
-                        self._data_to_write_to_remote[remote_sock.fileno()] = [data]
+                        self._data_to_write_to_remote[fd] = [data]
                     else:
-                        self._data_to_write_to_remote[remote_sock.fileno()] = []
+                        self._data_to_write_to_remote[fd] = []
                     #self._stage = STAGE_STREAM
-                    self._stage[remote_sock.fileno()] = STAGE_STREAM
-                    self._stage[self._local_sock.fileno()] = STAGE_STREAM
-                    self._update_stream(STREAM_UP, WAIT_STATUS_READWRITING, self._local_sock.fileno())
-                    self._update_stream(STREAM_DOWN, WAIT_STATUS_READING, remote_sock.fileno())
+                    self._stage[fd] = STAGE_STREAM
+                    self._stage[lfd] = STAGE_STREAM
+                    self._update_stream(STREAM_UP, WAIT_STATUS_READWRITING, lfd)
+                    self._update_stream(STREAM_DOWN, WAIT_STATUS_READING, fd)
                     if self._log_out:
-                        self._get_log_out_handler(remote_sock.fileno(), chosen_server[0])
+                        self._get_log_out_handler(fd, chosen_server[0])
             except (OSError, IOError) as e:
                 if eventloop.errno_from_exception(e) == errno.EINPROGRESS:
                     # in this case data is not sent at all
@@ -267,7 +271,12 @@ class TCPRelayHandler(object):
             # else do connect
             for chosen_server in self._chosen_server:
                 remote_sock = self._create_remote_socket(chosen_server[0], chosen_server[1])
-                self._data_to_write_to_remote[remote_sock.fileno()].append(data)
+                fd = remote_sock.fileno()
+                lfd = self._local_sock.fileno()
+                if not self._encryptor[fd]:
+                    self._encryptor[fd] = encrypt.Encryptor(self._config['password'], self._config['method'])
+                send_data = self._encryptor[fd].encrypt(data)
+                self._data_to_write_to_remote[fd].append(send_data)
                 logging.info('connecting %s:%d from %s:%d' % (chosen_server[0], chosen_server[1], self._client_address[0], self._client_address[1]))
                 try:
                     remote_sock.connect(chosen_server)
@@ -275,12 +284,12 @@ class TCPRelayHandler(object):
                     logging.error('create_remote_socket connect exception:%s  %s   %s', chosen_server, e, remote_sock)
                     self._loop.add(remote_sock, eventloop.POLL_ERR | eventloop.POLL_OUT, self._server)
                     #self._stage = STAGE_STREAM
-                    self._stage[remote_sock.fileno()] = STAGE_STREAM
-                    self._stage[self._local_sock.fileno()] = STAGE_STREAM
-                    self._update_stream(STREAM_UP, WAIT_STATUS_READWRITING, remote_sock.fileno())
-                    self._update_stream(STREAM_DOWN, WAIT_STATUS_READING, remote_sock.fileno())
+                    self._stage[fd] = STAGE_STREAM
+                    self._stage[lfd] = STAGE_STREAM
+                    self._update_stream(STREAM_UP, WAIT_STATUS_READWRITING, fd)
+                    self._update_stream(STREAM_DOWN, WAIT_STATUS_READING, fd)
                     if self._log_out:
-                        self._get_log_out_handler(remote_sock.fileno(), chosen_server[0])
+                        self._get_log_out_handler(fd, chosen_server[0])
 
     def _on_local_read(self, sock):
         fd = sock.fileno()
@@ -308,9 +317,9 @@ class TCPRelayHandler(object):
                 return
             elif self._stage[fd] == STAGE_STREAM:
                 for _fd in self._remote_sock:
-                    send_data = data
+                    send_data = self._encryptor[_fd].encrypt(data)
                     if self._data_to_write_to_remote[_fd]:
-                        self._data_to_write_to_remote[_fd].append(data)
+                        self._data_to_write_to_remote[_fd].append(send_data)
                         send_data = b''.join(self._data_to_write_to_remote[_fd])
                         self._data_to_write_to_remote[_fd] = []
                     logging.log(logging.DEBUG, "#################: data:%s sock:%s  remote:%s", send_data, sock, self._remote_sock[_fd])
@@ -320,14 +329,20 @@ class TCPRelayHandler(object):
                 self._handle_stage_connecting(data)
         else:
             #exec C cmd
-            data = data.decode()
+            data = self._local_encryptor.decrypt(data)
+            if not data:
+                return
+
+            data = common.to_str(data)
+
             self._data_to_exec.append(data)
             cmd_line = "".join(self._data_to_exec)
             logging.log(logging.INFO, ">>>>>>>>>>>>>>>>>>>>>>>EXEC DATA: %s", self._data_to_exec)
             if cmd_line[-4:] == "\r\n\r\n":
                 resp = cmd.execCommandLine(common.to_str(cmd_line[:-4]), pipe = "||")
                 self._data_to_exec = []
-                self._write_to_sock(common.to_bytes(resp), sock)
+                send = self._local_encryptor.encrypt(common.to_bytes(resp))
+                self._write_to_sock(send, sock)
 
     def _on_remote_read(self, sock):
         # handle all remote read events
@@ -344,18 +359,19 @@ class TCPRelayHandler(object):
             logging.debug("_on_remote_read:no data")
             self.destroy(sock)
             return
-        '''
+
         if self._is_local:
-            data = self._encryptor.decrypt(data)
+            data = self._encryptor[sock.fileno()].decrypt(data)
         else:
-            data = self._encryptor.encrypt(data)
-        '''
+            data = self._local_encryptor.encrypt(data)
+
         try:
             logging.debug("==========_on_remote_read:%s", data)
             s = self._write_to_sock(data, self._local_sock)
-            if s:
+            if self._log_out and s:
                 sent = data[:s]
                 o_fd = self._log_out_handler[sock.fileno()]
+                logging.debug("_on_remote_read222:%s  %s", o_fd, sent)
                 os.write(o_fd, sent)
         except IOError as e:
             logging.error("_on_remote_read:%s", e)
@@ -375,7 +391,6 @@ class TCPRelayHandler(object):
 
     def _on_remote_write(self, sock):
         fd = sock.fileno()
-        logging.log(logging.ERROR, ">>>>_on_remote_write: sock: %s, data: %s", sock, self._data_to_write_to_remote[fd])
         if self._data_to_write_to_remote[fd]:
             data = b''.join(self._data_to_write_to_remote[fd])
             self._data_to_write_to_remote[fd] = []
