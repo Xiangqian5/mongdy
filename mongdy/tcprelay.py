@@ -333,7 +333,7 @@ class TCPRelayHandler(object):
                 self._handle_stage_connecting(data)
         else:
             if self._allow_host:
-                if common.to_str(sock.getpeername()[0]) in self._allow_host:
+                if common.to_str(sock.getpeername()[0]) not in self._allow_host:
                     send = self._local_encryptor.encrypt(common.to_bytes('IP %s is forbiddened, reject\n' % (sock.getpeername()[0])))
                     self._write_to_sock(send, sock)
                     self.destroy(sock)
