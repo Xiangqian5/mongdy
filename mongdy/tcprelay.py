@@ -67,18 +67,19 @@ class TCPRelayHandler(object):
         #self._data_to_write_to_remote = []
         self._data_to_write_to_remote = defaultdict(list)
         self._log_out_handler = defaultdict(list)
-        self._data_to_exec = []
         self._client_address = local_sock.getpeername()[:2]
+
         if 'forbidden_ip' in config:
             self._forbidden_iplist = config['forbidden_ip']
         else:
             self._forbidden_iplist = None
+
         if 'allow_host' in config:
             self._allow_host = config['allow_host']
-        else:
-            self._allow_host = '127.0.0.1'
+
         if is_local:
             self._chosen_server = self._get_server_list()
+
         if 'log_out' in config:
             self._log_out = config['log_out']
         if 'programname' in config:
@@ -160,7 +161,7 @@ class TCPRelayHandler(object):
 
         # check if status is changed
         # only update if dirty
-        logging.debug('upstream_status: stream:%s status:%s fd:%s, downstream_status:%s, upstream_status:%s', stream, status, fd, self._downstream_status.get(fd, "NA"), self._upstream_status.get(fd, "NA"))
+        #logging.debug('upstream_status: stream:%s status:%s fd:%s, downstream_status:%s, upstream_status:%s', stream, status, fd, self._downstream_status.get(fd, "NA"), self._upstream_status.get(fd, "NA"))
 
         dirty = False
         if stream == STREAM_DOWN:
@@ -209,7 +210,7 @@ class TCPRelayHandler(object):
                 uncomplete = True
             else:
                 #destroy sock
-                logging.debug("_write_to_sock:%s", e)
+                logging.debug("write sock:%s", e)
                 self.destroy(sock)
                 return False
         
@@ -309,11 +310,11 @@ class TCPRelayHandler(object):
                 
         if not data:
             #destroy sock
-            logging.debug("_on_local_read:no data")
+            logging.debug("local sock read no data")
             self.destroy(sock)
             return
 
-        logging.log(logging.INFO, ">>>>>>>>>>>>>>>>>>>>>>>client data: %s", data)
+        logging.log(logging.INFO, "local sock data: %s", data)
 
         if self._is_local:
             if self._stage.setdefault(fd, STAGE_INIT) in [STAGE_INIT,STAGE_NEGO]:
@@ -326,27 +327,31 @@ class TCPRelayHandler(object):
                         self._data_to_write_to_remote[_fd].append(send_data)
                         send_data = b''.join(self._data_to_write_to_remote[_fd])
                         self._data_to_write_to_remote[_fd] = []
-                    logging.log(logging.DEBUG, "#################: data:%s sock:%s  remote:%s", send_data, sock, self._remote_sock[_fd])
                     self._write_to_sock(send_data, self._remote_sock[_fd])
                 return
             elif self._stage[fd] == STAGE_CONNECTING:
                 self._handle_stage_connecting(data)
         else:
-            #exec C cmd
-            data = self._local_encryptor.decrypt(data)
-            if not data:
-                return
+            if self._allow_host:
+                if common.to_str(sock.getpeername()[0]) in self._allow_host:
+                    send = self._local_encryptor.encrypt(common.to_bytes('IP %s is forbiddened, reject\n' % (sock.getpeername()[0])))
+                    self._write_to_sock(send, sock)
+                    self.destroy(sock)
+                    return
+            #exec cmd
+            try:
+                data = self._local_encryptor.decrypt(data)
+                if not data:
+                    return
 
-            data = common.to_str(data)
+                data = common.to_str(data)
 
-            self._data_to_exec.append(data)
-            cmd_line = "".join(self._data_to_exec)
-            logging.log(logging.INFO, ">>>>>>>>>>>>>>>>>>>>>>>EXEC DATA: %s", self._data_to_exec)
-            if cmd_line[-4:] == "\r\n\r\n":
-                resp = cmd.execCommandLine(common.to_str(cmd_line[:-4]), pipe = "||")
-                self._data_to_exec = []
+                logging.log(logging.INFO, "Remote commondline: %s", data)
+                resp = cmd.execCommandLine(data, pipe = "||")
                 send = self._local_encryptor.encrypt(common.to_bytes(resp))
                 self._write_to_sock(send, sock)
+            except Exception as e:
+                self._write_to_sock(common.to_bytes(e), sock)
 
     def _on_remote_read(self, sock):
         # handle all remote read events
@@ -357,10 +362,10 @@ class TCPRelayHandler(object):
         except (OSError, IOError) as e:
             if eventloop.errno_from_exception(e) in \
                     (errno.ETIMEDOUT, errno.EAGAIN, errno.EWOULDBLOCK):
-                logging.debug("_on_remote_read:%s", e)
+                logging.debug("remote sock read:%s", e)
                 return
         if not data:
-            logging.debug("_on_remote_read:no data")
+            logging.debug("remote sock read no data")
             self.destroy(sock)
             return
 
@@ -370,17 +375,16 @@ class TCPRelayHandler(object):
             data = self._local_encryptor.encrypt(data)
 
         try:
-            logging.debug("==========_on_remote_read:%s", data)
+            logging.debug("remote sock read:%s", data)
             s = self._write_to_sock(data, self._local_sock)
             if self._log_out and s:
                 sent = data[:s]
                 o_fd = self._log_out_handler[sock.fileno()]
-                logging.debug("_on_remote_read222:%s  %s", o_fd, sent)
                 os.write(o_fd, sent)
         except IOError as e:
-            logging.error("_on_remote_read:%s", e)
+            logging.error("remote sock read:%s", e)
         except Exception as e:
-            logging.debug("_on_remote_read:%s", e)
+            logging.debug("remote sock read:%s", e)
             # TODO use logging when debug completed
             self.destroy(sock)
 
@@ -390,7 +394,7 @@ class TCPRelayHandler(object):
             self._data_to_write_to_local = []
             self._write_to_sock(data, sock)
         else:
-            logging.debug("_on_local_write: WAIT_STATUS_READING")
+            logging.debug("local write no data")
             self._update_stream(STREAM_DOWN, WAIT_STATUS_READING, sock.fileno())
 
     def _on_remote_write(self, sock):
@@ -400,7 +404,7 @@ class TCPRelayHandler(object):
             self._data_to_write_to_remote[fd] = []
             self._write_to_sock(data, sock)
         else:
-            logging.debug("_on_remote_write: WAIT_STATUS_READING")
+            logging.debug("remote write no data")
             self._update_stream(STREAM_UP, WAIT_STATUS_READING, sock.fileno())
 
     def _create_remote_socket(self, ip, port):
@@ -413,9 +417,11 @@ class TCPRelayHandler(object):
             if common.to_str(sa[0]) in self._forbidden_iplist:
                 raise Exception('IP %s is in forbidden list, reject' %
                                 common.to_str(sa[0]))
+        '''
         if self._allow_host:
             if common.to_str(sa[0]) in self._allow_host:
-                raise Exception('IP %s is in allow host list, reject' % common.to_str(sa[0]))
+                raise Exception('IP %s is in not allow host list, reject' % common.to_str(sa[0]))
+        '''
 
         remote_sock = socket.socket(af, socktype, proto)
         fd = remote_sock.fileno()
