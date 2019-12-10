@@ -74,8 +74,8 @@ class TCPRelayHandler(object):
         else:
             self._forbidden_iplist = None
 
-        if 'allow_host' in config:
-            self._allow_host = config['allow_host']
+        if 'allow_ip' in config:
+            self._allow_ip = config['allow_ip']
 
         if is_local:
             self._chosen_server = self._get_server_list()
@@ -332,8 +332,8 @@ class TCPRelayHandler(object):
             elif self._stage[fd] == STAGE_CONNECTING:
                 self._handle_stage_connecting(data)
         else:
-            if self._allow_host:
-                if common.to_str(sock.getpeername()[0]) not in self._allow_host:
+            if self._allow_ip:
+                if common.to_str(sock.getpeername()[0]) not in self._allow_ip:
                     send = self._local_encryptor.encrypt(common.to_bytes('IP %s is forbiddened, reject\n' % (sock.getpeername()[0])))
                     self._write_to_sock(send, sock)
                     self.destroy(sock)
@@ -418,8 +418,8 @@ class TCPRelayHandler(object):
                 raise Exception('IP %s is in forbidden list, reject' %
                                 common.to_str(sa[0]))
         '''
-        if self._allow_host:
-            if common.to_str(sa[0]) in self._allow_host:
+        if self._allow_ip:
+            if common.to_str(sa[0]) in self._allow_ip:
                 raise Exception('IP %s is in not allow host list, reject' % common.to_str(sa[0]))
         '''
 
