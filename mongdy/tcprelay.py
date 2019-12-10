@@ -73,6 +73,10 @@ class TCPRelayHandler(object):
             self._forbidden_iplist = config['forbidden_ip']
         else:
             self._forbidden_iplist = None
+        if 'allow_host' in config:
+            self._allow_host = config['allow_host']
+        else:
+            self._allow_host = '127.0.0.1'
         if is_local:
             self._chosen_server = self._get_server_list()
         if 'log_out' in config:
@@ -409,6 +413,10 @@ class TCPRelayHandler(object):
             if common.to_str(sa[0]) in self._forbidden_iplist:
                 raise Exception('IP %s is in forbidden list, reject' %
                                 common.to_str(sa[0]))
+        if self._allow_host:
+            if common.to_str(sa[0]) in self._allow_host:
+                raise Exception('IP %s is in allow host list, reject' % common.to_str(sa[0]))
+
         remote_sock = socket.socket(af, socktype, proto)
         fd = remote_sock.fileno()
         self._remote_sock[fd] = remote_sock

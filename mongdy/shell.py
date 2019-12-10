@@ -144,6 +144,8 @@ def get_config(is_local):
                 config['fast_open'] = True
             elif key == '--forbidden-ip':
                 config['forbidden_ip'] = to_str(value).split(',')
+            elif key == '--allow-host':
+                config['allow_host'] = to_str(value).split(',')
             elif key in ('-h', '--help'):
                 if is_local:
                     print_local_help()
@@ -199,6 +201,7 @@ def get_config(is_local):
         config['server'] = to_str(config.get('server', '0.0.0.0'))
         try:
             config['forbidden_ip'] = IPNetwork(config.get('forbidden_ip', '127.0.0.0/8,::1/128'))
+            config['allow_host'] = IPNetwork(config.get('allow_host', '127.0.0.1'))
         except Exception as e:
             logging.error(e)
             sys.exit(2)
