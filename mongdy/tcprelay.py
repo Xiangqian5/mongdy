@@ -17,6 +17,8 @@ import encrypt
 import json
 import fcntl
 import stat
+import struct
+from ttldict import TTLDict
 
 
 BUF_SIZE = 64 * 1024
@@ -53,6 +55,7 @@ class TCPRelayHandler(object):
         self._remote_sock = dict()
         self._local_sock = local_sock
         self._config = config
+        self._consul_server = TTLDict()
 
         #works as MDQlocal or MDQserver
         self._is_local = is_local
@@ -84,6 +87,8 @@ class TCPRelayHandler(object):
             self._log_out = config['log_out']
         if 'programname' in config:
             self._programname = config['programname']
+        if 'pool' in config:
+            self._pool = config['pool']
 
         fd_to_handlers[local_sock.fileno()] = self
         local_sock.setblocking(False)
@@ -145,14 +150,49 @@ class TCPRelayHandler(object):
             sock = self._remote_sock[fd]
             return sock
 
+    def _parse_consul(self, data):
+        addrtype = common.ord(data[0])
+        ip_addr = None
+        ip_port = None
+        pool = None
+        if addrtype == common.ADDRTYPE_IPV4:
+            if len(data) >= 7:
+                ip_addr = socket.inet_ntoa(data[1:5])
+                ip_port = struct.unpack('>H', data[5:7])[0]
+                length = struct.unpack('>H', data[7:9])[0]
+                pool = common.to_str(data[9:9+length])
+            else:
+                logging.warn('header is too short')
+        elif addrtype == common.ADDRTYPE_IPV6:
+            if len(data) >= 19:
+                ip_addr = socket.inet_ntop(socket.AF_INET6, data[1:17])
+                ip_port = struct.unpack('>H', data[17:19])[0]
+                length = struct.unpack('>H', data[19:21])[0]
+                pool = common.to_str(data[21:21+length])
+            else:
+                logging.warn('header is too short')
+
+        if ip_addr is None:
+            return None
+
+        return ip_addr, ip_port, pool
+
     def _capability_nego(self, data, sock):
-        data = data.decode()
-        version = ord(data[0])
-        nmethod = ord(data[1])
-        methods = list(data[2:])
-        logging.log(logging.DEBUG, "version:%d, nmethod:%d, methods:%s, server:%s", version, nmethod, methods, self._chosen_server)
-        self._write_to_sock(b'\x06\x00', sock)
-        self._stage[sock.fileno()] = STAGE_CONNECTING
+        #data = data.decode()
+        version = common.ord(data[0])
+        reverse = common.ord(data[1])
+        method = common.ord(data[2])
+        logging.log(logging.DEBUG, "version:%d, reverse:%d, method:%s, server:%s", version, reverse, method, self._chosen_server)
+        if method == 1:
+            self._write_to_sock(b'\x06\x00', sock)
+            self._stage[sock.fileno()] = STAGE_CONNECTING
+        elif method == 2:
+            ip_addr, ip_port, pool = self._parse_consul(data[3:])
+            if ip_addr is not None:
+                #更新server list
+                if self._pool == pool:
+                    logging.log(logging.INFO, "remote list update:%s", (ip_addr, ip_port, pool))
+                    self._consul_server.setex(ip_addr, 10, ip_port)
 
         return True
 
@@ -237,7 +277,10 @@ class TCPRelayHandler(object):
         if self._is_local and not self._fastopen_connected and self._config['fast_open']:
             try:
                 self._fastopen_connected = True
-                for chosen_server in self._chosen_server:
+                remote_server_list = set(self._chosen_server)
+                for consul_server in self._consul_server.items():
+                    remote_server_list.add(consul_server)
+                for chosen_server in remote_server_list:
                     remote_sock = self._create_remote_socket(chosen_server[0], chosen_server[1])
                     fd = remote_sock.fileno()
                     lfd = self._local_sock.fileno()
@@ -274,7 +317,10 @@ class TCPRelayHandler(object):
                     self.destroy(self._local_sock)
         else:
             # else do connect
-            for chosen_server in self._chosen_server:
+            remote_server_list = set(self._chosen_server)
+            for consul_server in self._consul_server.items():
+                remote_server_list.add(consul_server)
+            for chosen_server in remote_server_list:
                 remote_sock = self._create_remote_socket(chosen_server[0], chosen_server[1])
                 fd = remote_sock.fileno()
                 lfd = self._local_sock.fileno()

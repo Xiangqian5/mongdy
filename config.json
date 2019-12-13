@@ -1,14 +1,12 @@
 {
+    "server": "0.0.0.0",
     "server_port":1084,
-    "server_list":["127.0.0.1"],
-    "local_address":"127.0.0.1",
-    "local_port":1083,
     "fast_open":false,
     "password":"weibo_recom",
     "pid-file":"/var/log/mongdy.pid",
-    "log-file":"log/mongdy.log",
+    "log-file":"/data1/app/interface.video.recom.weibo.com/logs/mongdy",
     "log_out": true,
-    "local_out_dir": "log",
+    "local_out_dir": "/data1/app/interface.video.recom.weibo.com/logs/mongdy",
     "programname": "ruf",
     "pool": "openresty-ruf"
 }

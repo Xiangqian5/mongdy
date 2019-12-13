@@ -19,6 +19,11 @@ class ConsulStub(object):
         request_serializer=consul__pb2.HelloRequest.SerializeToString,
         response_deserializer=consul__pb2.HelloReply.FromString,
         )
+    self.Notify = channel.unary_unary(
+        '/Consul/Notify',
+        request_serializer=consul__pb2.NotifyRequest.SerializeToString,
+        response_deserializer=consul__pb2.NotifyReply.FromString,
+        )
 
 
 class ConsulServicer(object):
@@ -32,6 +37,13 @@ class ConsulServicer(object):
     context.set_details('Method not implemented!')
     raise NotImplementedError('Method not implemented!')
 
+  def Notify(self, request, context):
+    # missing associated documentation comment in .proto file
+    pass
+    context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+    context.set_details('Method not implemented!')
+    raise NotImplementedError('Method not implemented!')
+
 
 def add_ConsulServicer_to_server(servicer, server):
   rpc_method_handlers = {
@@ -39,6 +51,11 @@ def add_ConsulServicer_to_server(servicer, server):
           servicer.SayHello,
           request_deserializer=consul__pb2.HelloRequest.FromString,
           response_serializer=consul__pb2.HelloReply.SerializeToString,
+      ),
+      'Notify': grpc.unary_unary_rpc_method_handler(
+          servicer.Notify,
+          request_deserializer=consul__pb2.NotifyRequest.FromString,
+          response_serializer=consul__pb2.NotifyReply.SerializeToString,
       ),
   }
   generic_handler = grpc.method_handlers_generic_handler(

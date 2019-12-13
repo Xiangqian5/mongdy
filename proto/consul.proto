@@ -2,6 +2,9 @@ syntax = "proto3";
 
 service Consul {
     rpc SayHello (HelloRequest) returns (HelloReply) {}
+
+    rpc Notify(NotifyRequest) returns (NotifyReply) {}
+
 }
 
 message HelloRequest {
@@ -11,3 +14,16 @@ message HelloRequest {
 message HelloReply {
     string result = 1;
 }
+
+message NotifyRequest {
+    string ip = 1;
+    int32 port = 2;
+    string pool = 3;
+}
+
+message NotifyReply {
+    int32 ret = 1;
+    //保活时间 0:关闭
+    int32 keepalive = 2;
+}
+

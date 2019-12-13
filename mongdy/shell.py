@@ -144,8 +144,8 @@ def get_config(is_local):
                 config['fast_open'] = True
             elif key == '--forbidden-ip':
                 config['forbidden_ip'] = to_str(value).split(',')
-            elif key == '--allow-host':
-                config['allow_host'] = to_str(value).split(',')
+            elif key == '--allow-ip':
+                config['allow_ip'] = to_str(value).split(',')
             elif key in ('-h', '--help'):
                 if is_local:
                     print_local_help()
@@ -160,6 +160,8 @@ def get_config(is_local):
                 config['pid-file'] = to_str(value)
             elif key == '--log-file':
                 config['log-file'] = to_str(value)
+            elif key == '--pool':
+                config['pool'] = to_str(value)
             elif key == '-q':
                 v_count -= 1
                 config['verbose'] = v_count
@@ -182,10 +184,11 @@ def get_config(is_local):
     config['log-file'] = config.get('log-file', 'log/mongdy.log')
     config['verbose'] = config.get('verbose', False)
     config['local_address'] = to_str(config.get('local_address', '127.0.0.1'))
-    config['local_port'] = config.get('local_port', 1081)
+    config['local_port'] = config.get('local_port', 1088)
     config['log_out'] = config.get('log_out', False)
     config['local_out_dir'] = to_str(config.get('local_out_dir', 'log'))
     config['programname'] = to_str(config.get('programname', 'mongdy'))
+    config['pool'] = to_str(config.get('pool', 'openresty-ruf'))
     if config['log_out']:
         if not os.path.exists(config['local_out_dir']):
             os.makedirs(config['local_out_dir'])
@@ -201,11 +204,11 @@ def get_config(is_local):
         config['server'] = to_str(config.get('server', '0.0.0.0'))
         try:
             config['forbidden_ip'] = IPNetwork(config.get('forbidden_ip', '127.0.0.0/8,::1/128'))
-            config['allow_host'] = IPNetwork(config.get('allow_host', '127.0.0.1'))
+            config['allow_ip'] = IPNetwork(config.get('allow_ip', '127.0.0.1'))
         except Exception as e:
             logging.error(e)
             sys.exit(2)
-    config['server_port'] = config.get('server_port', 9388)
+    config['server_port'] = config.get('server_port', 8088)
 
     logging.getLogger('').handlers = []
     logging.addLevelName(VERBOSE_LEVEL, 'VERBOSE')
@@ -221,9 +224,8 @@ def get_config(is_local):
         level = logging.INFO
 
     verbose = config['verbose']
-    #logging.basicConfig(level=level, format='%(asctime)s %(levelname)-8s %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-
-    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)-8s %(filename)-10s %(lineno)-4d %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+    logging.basicConfig(level=level, format='%(asctime)s %(levelname)-8s %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+    #logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)-8s %(filename)-10s %(lineno)-4d %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
     
     check_config(config, is_local)
 
@@ -244,9 +246,9 @@ You can supply configurations via either config file or command line arguments.
 Proxy options:
   -c CONFIG              path to config file
   -s SERVER_ADDR         server address
-  -p SERVER_PORT         server port, default: 8388
+  -p SERVER_PORT         server port, default: 8088
   -b LOCAL_ADDR          local binding address, default: 127.0.0.1
-  -l LOCAL_PORT          local port, default: 1080
+  -l LOCAL_PORT          local port, default: 1088
   -k PASSWORD            password
   -m METHOD              encryption method, default: aes-256-cfb
   -t TIMEOUT             timeout in seconds, default: 300
@@ -277,6 +279,7 @@ Proxy options:
   -m METHOD              encryption method, default: aes-256-cfb
   --fast-open            use TCP_FASTOPEN, requires Linux 3.7+
   --forbidden-ip IPLIST  comma seperated IP list forbidden to connect
+  --allow-ip IPLIST     comma seperated IP list allow to connect
 
 General options:
   -h, --help             show this help message and exit
