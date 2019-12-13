@@ -9,8 +9,12 @@ from collections import defaultdict
 import logging
 import os
 import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../'))
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'consul_pb'))
+
+from consul_client import consul_node
+import multiprocessing
 from tcprelay import TCPRelay
 from eventloop import EventLoop
 import shell
@@ -41,6 +45,10 @@ def main():
     tcp_server = TCPRelay(config, False)
     loop = EventLoop()
     tcp_server.add_to_loop(loop)
+
+    p = multiprocessing.Process(target = consul, args=(config,))
+    p.daemon = True
+    p.start()
 
     loop.run()
 

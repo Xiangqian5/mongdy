@@ -13,8 +13,8 @@ from common import to_bytes, pack_addr
 class ConsulServicer(consul_pb2_grpc.ConsulServicer):
     def __init__(self, config):
         self._ip_list = defaultdict(set)
-        self._sock = self._get_porxy_sock()
         self._config = config
+        self._sock = self._get_porxy_sock()
 
     def _get_porxy_sock(self):
         server_addrs = (self._config['local_address'], self._config['local_port'])
@@ -52,7 +52,7 @@ def consul(config):
     # 注册本地服务,方法ConsulServicer只有这个是变的
     consul_pb2_grpc.add_ConsulServicer_to_server(servicer, server)
     # 监听端口
-    server.add_insecure_port('[::]:50051')
+    server.add_insecure_port('[::]:%s' % (config["consul_port"]))
     # 开始接收请求进行服务
     server.start()
     # 使用 ctrl+c 可以退出服务

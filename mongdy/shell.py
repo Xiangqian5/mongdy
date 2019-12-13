@@ -162,6 +162,10 @@ def get_config(is_local):
                 config['log-file'] = to_str(value)
             elif key == '--pool':
                 config['pool'] = to_str(value)
+            elif key == '--consul':
+                config['consul'] = to_str(value)
+            elif key == '--consul-port':
+                config['consul_port'] = to_str(value)
             elif key == '-q':
                 v_count -= 1
                 config['verbose'] = v_count
@@ -189,6 +193,8 @@ def get_config(is_local):
     config['local_out_dir'] = to_str(config.get('local_out_dir', 'log'))
     config['programname'] = to_str(config.get('programname', 'mongdy'))
     config['pool'] = to_str(config.get('pool', 'openresty-ruf'))
+    config['consul'] = to_str(config.get('consul', '127.0.0.1'))
+    config['consul_port'] = config.get('consul_port', 50051)
     if config['log_out']:
         if not os.path.exists(config['local_out_dir']):
             os.makedirs(config['local_out_dir'])
