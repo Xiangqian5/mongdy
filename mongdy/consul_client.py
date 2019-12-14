@@ -16,9 +16,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'consul_pb'))
 
 from consul_pb import consul_pb2, consul_pb2_grpc
 
-_HOST = '127.0.0.1'
-_PORT = '50051'
-
 def get_host_ip():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -30,47 +27,28 @@ def get_host_ip():
     return ip
 
 def get_srv_mongdy_port(config):
-    pid_file = config["pid-file"]
     pid = None
-    port = None
-    try:
-        if os.path.exists(pid_file):
-            fd = os.open(pid_file, os.O_RDONLY, stat.S_IRUSR | stat.S_IWUSR)
-            flags = fcntl.fcntl(fd, fcntl.F_GETFD)
-            assert flags != -1
-            flags |= fcntl.FD_CLOEXEC
-            r = fcntl.fcntl(fd, fcntl.F_SETFD, flags)
-            assert r != -1
+    port = config["server_port"]
+    if port is None:
+        try:
+            pid_file = config["pid-file"]
+            if os.path.exists(pid_file):
+                fd = os.open(pid_file, os.O_RDONLY, stat.S_IRUSR | stat.S_IWUSR)
+                flags = fcntl.fcntl(fd, fcntl.F_GETFD)
+                assert flags != -1
+                flags |= fcntl.FD_CLOEXEC
+                r = fcntl.fcntl(fd, fcntl.F_SETFD, flags)
+                assert r != -1
 
-            pid = os.read(fd, 128).decode().rstrip('\n')
-            if pid is not None:
-                p = psutil.Process(int(pid))
-                port = (p.connections()[0].laddr[1])
+                pid = os.read(fd, 128).decode().rstrip('\n')
+                if pid is not None:
+                    p = psutil.Process(int(pid))
+                    port = (p.connections()[0].laddr[1])
 
-            return int(port)
-        else:
-            cmd = "ps -eo pid,cmd"
-            cmd1 = shlex.split(cmd)
-            cmd = "grep -e \"mongdy/server\" -e \"mdserver\""
-            cmd2 = shlex.split(cmd)
-            proc1 = subprocess.Popen(cmd1, stdout=subprocess.PIPE)
-            proc2 = subprocess.Popen(cmd2, stdin=proc1.stdout, stdout=subprocess.PIPE)
-            proc3 = subprocess.Popen(['grep', '-v', 'grep'], stdin=proc2.stdout, stdout=subprocess.PIPE)
-            proc1.wait()
-            proc2.wait()
-            proc3.wait()
-            out = proc3.communicate()
-            ret = out[0].decode()
-
-            pid = ret.split('\n')[0].strip().split(' ')[0]
-
-            if pid is not None:
-                p = psutil.Process(int(pid))
-                port = (p.connections()[0].laddr[1])
-
-            return int(port)
-    except Exception as e:
-        print(e)
+        except Exception as e:
+            print(e)
+    
+    return int(port)
 
 def notify(*args, **kwargs):
     port = get_srv_mongdy_port(kwargs["config"])
@@ -80,12 +58,7 @@ def notify(*args, **kwargs):
             try:
                 resp = client.Notify(consul_pb2.NotifyRequest(ip=kwargs["ip"], port=port, pool="openresty-ruf"))
             except Exception as e:
-                if hasattr(e, 'errno'):
-                    print("errno")
-                elif e.args:
-                    print(e.args[0])
-                else:
-                    print(e)
+                pass
 
 def consul_node(config):
     localip = get_host_ip()

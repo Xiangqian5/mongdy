@@ -1,6 +1,7 @@
 {
     "server": "0.0.0.0",
     "server_port":1084,
+    "allow_ip":"127.0.0.1",
     "consul": "127.0.0.1",
     "consul_port": 50051,
     "fast_open":false,
