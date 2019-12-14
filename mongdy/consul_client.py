@@ -53,7 +53,7 @@ def get_srv_mongdy_port(config):
 def notify(*args, **kwargs):
     port = get_srv_mongdy_port(kwargs["config"])
     if port is not None:
-        with grpc.insecure_channel("%s:%s" % (kwargs["config"].consul, kwargs["config"].consul_port)) as channel:
+        with grpc.insecure_channel("%s:%s" % (kwargs["config"]["consul"], kwargs["config"]["consul_port"])) as channel:
             client = consul_pb2_grpc.ConsulStub(channel=channel)
             try:
                 resp = client.Notify(consul_pb2.NotifyRequest(ip=kwargs["ip"], port=port, pool="openresty-ruf"))
@@ -62,7 +62,7 @@ def notify(*args, **kwargs):
 
 def consul_node(config):
     localip = get_host_ip()
-    cycle_timer = CycleTimer(5, notify, [], {"ip":localip, "config":config})
+    cycle_timer = CycleTimer(int(config.get("consul_interval", 60)), notify, [], {"ip":localip, "config":config})
 
     def handler_exit(signum, _):
         cycle_timer.cancel()

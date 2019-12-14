@@ -4,6 +4,7 @@
     "allow_ip":"127.0.0.1",
     "consul": "127.0.0.1",
     "consul_port": 50051,
+    "consul_interval":60,
     "fast_open":false,
     "password":"weibo_recom",
     "pid-file":"/var/log/mongdy.pid",
