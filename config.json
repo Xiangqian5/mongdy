@@ -8,9 +8,6 @@
     "fast_open":false,
     "password":"weibo_recom",
     "pid-file":"/var/log/mongdy.pid",
-    "log-file":"/data1/app/interface.video.recom.weibo.com/logs/mongdy.log",
-    "log_out": true,
-    "local_out_dir": "/data1/app/interface.video.recom.weibo.com/logs/mongdy",
-    "programname": "ruf",
+    "log-file":"/data1/app/interface.video.recom.weibo.com/logs/mongdy/mongdy.log",
     "pool": "openresty-ruf"
 }

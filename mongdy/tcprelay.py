@@ -192,7 +192,7 @@ class TCPRelayHandler(object):
                 #更新server list
                 if self._pool == pool:
                     logging.log(logging.INFO, "remote list update:%s", (ip_addr, ip_port, pool))
-                    self._consul_server.setex(ip_addr, 10, ip_port)
+                    self._consul_server.setex(ip_addr, 200, ip_port)
 
         return True
 
