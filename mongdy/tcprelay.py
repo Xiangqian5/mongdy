@@ -10,7 +10,7 @@ import logging
 import os
 import errno
 import eventloop
-import cmd
+from commandline import CommandLines
 import random
 import common
 import encrypt
@@ -48,14 +48,14 @@ WAIT_STATUS_WRITING = 2
 WAIT_STATUS_READWRITING = WAIT_STATUS_READING | WAIT_STATUS_WRITING
 
 class TCPRelayHandler(object):
-    def __init__(self, server, fd_to_handlers, loop, local_sock, config, is_local):
+    def __init__(self, server, fd_to_handlers, loop, local_sock, config, is_local, consul_server):
         self._server = server
         self._fd_to_handlers = fd_to_handlers
         self._loop = loop
         self._remote_sock = dict()
         self._local_sock = local_sock
         self._config = config
-        self._consul_server = TTLDict()
+        self._consul_server = consul_server
 
         #works as MDQlocal or MDQserver
         self._is_local = is_local
@@ -320,6 +320,7 @@ class TCPRelayHandler(object):
             remote_server_list = set(self._chosen_server)
             for consul_server in self._consul_server.items():
                 remote_server_list.add(consul_server)
+            logging.error('+++++++++++ %s  %s', remote_server_list, self._consul_server)
             for chosen_server in remote_server_list:
                 remote_sock = self._create_remote_socket(chosen_server[0], chosen_server[1])
                 fd = remote_sock.fileno()
@@ -393,7 +394,8 @@ class TCPRelayHandler(object):
                 data = common.to_str(data)
 
                 logging.log(logging.INFO, "Remote commondline: %s", data)
-                resp = cmd.execCommandLine(data, pipe = "||")
+                command_line = CommandLines(data)
+                resp = command_line.exec_command_lines()
                 send = self._local_encryptor.encrypt(common.to_bytes(resp))
                 self._write_to_sock(send, sock)
             except Exception as e:
@@ -538,6 +540,7 @@ class TCPRelay(object):
         self._eventloop = None
         self._closed = False
         self._fd_to_handlers = {}
+        self._consul_server = TTLDict()
 
         if is_local:
             listen_addr = config["local_address"]
@@ -584,7 +587,7 @@ class TCPRelay(object):
             try:
                 logging.log(logging.DEBUG, 'accept')
                 conn = self._server_socket.accept()
-                TCPRelayHandler(self, self._fd_to_handlers, self._eventloop, conn[0], self._config, self._is_local)
+                TCPRelayHandler(self, self._fd_to_handlers, self._eventloop, conn[0], self._config, self._is_local, self._consul_server)
                 #Handler
             except (OSError, IOError) as e:
                 error_no = eventloop.errno_from_exception(e)
