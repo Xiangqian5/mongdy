@@ -78,7 +78,7 @@ class CommandLines():
             traceback.print_exc()
             return
 
-    def _exec_command(self, cmds):
+    def _exec_command(self, cmds, cwd):
         args = []
         proc = []
         cnt  = len(cmds)
@@ -86,9 +86,9 @@ class CommandLines():
             command_line = shlex.split(cmds[i])
             args.append(command_line)
             if i == 0:
-                proc.append(subprocess.Popen(args[i], stdout=subprocess.PIPE))
+                proc.append(subprocess.Popen(args[i], stdout=subprocess.PIPE, cwd=cwd))
             else:
-                proc.append(subprocess.Popen(args[i], stdin=proc[i-1].stdout, stdout=subprocess.PIPE))
+                proc.append(subprocess.Popen(args[i], stdin=proc[i-1].stdout, stdout=subprocess.PIPE, cwd=cwd))
         
         out = proc[cnt-1].communicate()
         for i in range(cnt):
@@ -101,8 +101,11 @@ class CommandLines():
     def exec_command_lines(self):
         try:
             self._parse_command_line()
+            cwd = os.getcwd()
             for cmds in self._seq_list:
-                self._exec_command(cmds)
+                if cmds[0][:3] == 'cd ':
+                    cwd = cmds[0][3:]
+                self._exec_command(cmds, cwd)
         except Exception as e:
             print(e)
             return e
@@ -112,5 +115,6 @@ class CommandLines():
         
 if __name__ == "__main__":
     cmd = CommandLines("ls -l | grep \"py;;|\" | sort -n | uniq -c;pwd;ls -l | grep | ssd ;pwd")
-    cmd = CommandLines("pwd")
-    cmd.exec_command_lines()
+    cmd = CommandLines("cd /data1;ls;cd -;pwd")
+    out = cmd.exec_command_lines()
+    print(out)

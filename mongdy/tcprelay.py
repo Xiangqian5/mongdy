@@ -48,14 +48,16 @@ WAIT_STATUS_WRITING = 2
 WAIT_STATUS_READWRITING = WAIT_STATUS_READING | WAIT_STATUS_WRITING
 
 class TCPRelayHandler(object):
-    def __init__(self, server, fd_to_handlers, loop, local_sock, config, is_local, consul_server):
+    def __init__(self, server, fd_to_handlers, loop, local_sock, config, is_local):
         self._server = server
         self._fd_to_handlers = fd_to_handlers
         self._loop = loop
         self._remote_sock = dict()
         self._local_sock = local_sock
         self._config = config
-        self._consul_server = consul_server
+        self._consul_server = server._consul_server
+        self._programname = server._programname
+        self._local_log_dir = server._local_log_dir
 
         #works as MDQlocal or MDQserver
         self._is_local = is_local
@@ -85,8 +87,6 @@ class TCPRelayHandler(object):
 
         if 'log_out' in config:
             self._log_out = config['log_out']
-        if 'programname' in config:
-            self._programname = config['programname']
         if 'pool' in config:
             self._pool = config['pool']
 
@@ -117,7 +117,7 @@ class TCPRelayHandler(object):
         return server_list
 
     def _get_log_out_handler(self, sockfd, ip):
-        log_out_file = "%s/%s_%s.log" % (self._config['local_out_dir'].rstrip('/'), self._programname, common.to_str(ip))
+        log_out_file = "%s/%s_%s.log" % (self._local_log_dir.rstrip('/'), self._programname, common.to_str(ip))
         try:
             fd = os.open(log_out_file, os.O_RDWR | os.O_APPEND | os.O_CREAT, stat.S_IRUSR | stat.S_IWUSR)
             flags = fcntl.fcntl(fd, fcntl.F_GETFD)
@@ -184,14 +184,24 @@ class TCPRelayHandler(object):
         method = common.ord(data[2])
         logging.log(logging.DEBUG, "version:%d, reverse:%d, method:%s, server:%s", version, reverse, method, self._chosen_server)
         if method == 1:
-            self._write_to_sock(b'\x06\x00', sock)
-            self._stage[sock.fileno()] = STAGE_CONNECTING
+            resp = b'\x06\x00'
+            try:
+                if data[3:]:
+                    len_dir = struct.unpack('>H', data[3:5])[0]
+                    self._local_log_dir = common.to_str(data[5:5+len_dir])
+                    len_name = struct.unpack('>H', data[5+len_dir:7+len_dir])[0]
+                    self._programname = common.to_str(data[7+len_dir:7+len_dir+len_name])
+                    self._write_to_sock(resp, sock)
+                    self._stage[sock.fileno()] = STAGE_CONNECTING
+            except Exception as e:
+                resp = b'nego data not valid.'
+                self._write_to_sock(resp, sock)
         elif method == 2:
             ip_addr, ip_port, pool = self._parse_consul(data[3:])
             if ip_addr is not None:
                 #更新server list
                 if self._pool == pool:
-                    logging.log(logging.INFO, "remote list update:%s", (ip_addr, ip_port, pool))
+                    logging.log(logging.DEBUG, "remote list update:%s", (ip_addr, ip_port, pool))
                     self._consul_server.setex(ip_addr, 200, ip_port)
 
         return True
@@ -201,7 +211,6 @@ class TCPRelayHandler(object):
 
         # check if status is changed
         # only update if dirty
-        #logging.debug('upstream_status: stream:%s status:%s fd:%s, downstream_status:%s, upstream_status:%s', stream, status, fd, self._downstream_status.get(fd, "NA"), self._upstream_status.get(fd, "NA"))
 
         dirty = False
         if stream == STREAM_DOWN:
@@ -320,7 +329,6 @@ class TCPRelayHandler(object):
             remote_server_list = set(self._chosen_server)
             for consul_server in self._consul_server.items():
                 remote_server_list.add(consul_server)
-            logging.error('+++++++++++ %s  %s', remote_server_list, self._consul_server)
             for chosen_server in remote_server_list:
                 remote_sock = self._create_remote_socket(chosen_server[0], chosen_server[1])
                 fd = remote_sock.fileno()
@@ -361,7 +369,7 @@ class TCPRelayHandler(object):
             self.destroy(sock)
             return
 
-        logging.log(logging.INFO, "local sock data: %s", data)
+        logging.log(logging.DEBUG, "local sock data: %s", data)
 
         if self._is_local:
             if self._stage.setdefault(fd, STAGE_INIT) in [STAGE_INIT,STAGE_NEGO]:
@@ -541,6 +549,10 @@ class TCPRelay(object):
         self._closed = False
         self._fd_to_handlers = {}
         self._consul_server = TTLDict()
+        if 'programname' in config:
+            self._programname = config['programname']
+        if 'local_log_dir' in config:
+            self._local_log_dir = config['local_log_dir']
 
         if is_local:
             listen_addr = config["local_address"]
@@ -587,7 +599,7 @@ class TCPRelay(object):
             try:
                 logging.log(logging.DEBUG, 'accept')
                 conn = self._server_socket.accept()
-                TCPRelayHandler(self, self._fd_to_handlers, self._eventloop, conn[0], self._config, self._is_local, self._consul_server)
+                TCPRelayHandler(self, self._fd_to_handlers, self._eventloop, conn[0], self._config, self._is_local)
                 #Handler
             except (OSError, IOError) as e:
                 error_no = eventloop.errno_from_exception(e)

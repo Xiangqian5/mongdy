@@ -10,6 +10,7 @@ import json
 import errno
 import select
 import os, sys
+import struct
 
 def open_file(outfile):
     import fcntl
@@ -35,32 +36,43 @@ def open_file(outfile):
 
     return fd
 
+def get_header(log_dir, programe_name):
+    common_header = b'\x06\x00\x01'
+    log_dir = common.to_bytes(log_dir)
+    programe_name = common.to_bytes(programe_name)
+    len_dir = struct.pack('>H', len(log_dir))
+    len_name = struct.pack('>H', len(programe_name))
+    return common_header + len_dir + log_dir + len_name + programe_name
+
 def select_client():
     server_addrs = ('127.0.0.1', 1083)
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client.connect(server_addrs)
     client.setblocking(False)
+    try:
+        client.connect(server_addrs)
+    except Exception as e:
+        pass
     
-    nego = b'\x06\x00\x01'
-    print(common.to_str(nego))
+    log_dir = "logs"
+    programe_name = "logname2"
+    nego = get_header(log_dir, programe_name)
     client.send(nego)
+    time.sleep(1)
+    client.recv(1024)
+    time.sleep(1)
 
-    msg = b"Hello:I'm client!"
-    msg = b"tree"
-
-    msg = b"cat mongdy/tcprelay.py\r\n\r\n"
-    msg = b"pwd\r\n\r\n"
-    msg = b"ls -l || sort\r\n\r\n"
-    time.sleep(0.1)
+    msg = b"ls -l || sort"
+    msg = b"cat mongdy/tcprelay.py"
+    msg = b'grep -rnw "4450164980508272" /data1/app/interface.video.recom.weibo.com/logs/openresty/vertical_video_recom_issue.log.20191216 || awk -F"\\t" \'{print $3}\''
+    msg = b"cd /data1;pwd"
     client.send(msg)
-    time.sleep(0.1)
 
     r_inputs = set()
     r_inputs.add(client)
     w_inputs = set()
-    #w_inputs.add(client)
+    w_inputs.add(client)
     e_inputs = set()
-    #e_inputs.add(client)
+    e_inputs.add(client)
 
     fd = open_file("output.log")
     while True:
@@ -73,10 +85,11 @@ def select_client():
                     print(e)
                 if data:
                     os.write(fd, data)
-                    #print(data)
                 else:
                     print("远程断开连接")
                     r_inputs.clear()
+                    client.close()
+                    return
             if len(w_list) > 0:     # 产生了可写的事件，即连接完成
                 print(w_list)
                 w_inputs.clear()    # 当连接完成之后，清除掉完成连接的socket
@@ -88,7 +101,6 @@ def select_client():
             print(e)
 
 
-    time.sleep(1)
     client.close()
                 
 if __name__ == '__main__':
