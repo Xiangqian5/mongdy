@@ -7,7 +7,7 @@
     "consul_interval":60,
     "fast_open":false,
     "password":"weibo_recom",
-    "pid-file":"/var/log/mongdy.pid",
+    "pid-file":"/data1/app/interface.video.recom.weibo.com/logs/mongdy/mongdy.pid",
     "log-file":"/data1/app/interface.video.recom.weibo.com/logs/mongdy/mongdy.log",
     "pool": "openresty-ruf"
 }

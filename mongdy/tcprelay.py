@@ -55,9 +55,6 @@ class TCPRelayHandler(object):
         self._remote_sock = dict()
         self._local_sock = local_sock
         self._config = config
-        self._consul_server = server._consul_server
-        self._programname = server._programname
-        self._local_log_dir = server._local_log_dir
 
         #works as MDQlocal or MDQserver
         self._is_local = is_local
@@ -84,11 +81,15 @@ class TCPRelayHandler(object):
 
         if is_local:
             self._chosen_server = self._get_server_list()
-
-        if 'log_out' in config:
-            self._log_out = config['log_out']
-        if 'pool' in config:
-            self._pool = config['pool']
+            self._consul_server = server._consul_server
+            if 'log_out' in config:
+                self._log_out = config['log_out']
+            if 'pool' in config:
+                self._pool = config['pool']
+            if 'programname' in config:
+                self._programname = config['programname']
+            if 'local_log_dir' in config:
+                self._local_log_dir = config['local_log_dir']
 
         fd_to_handlers[local_sock.fileno()] = self
         local_sock.setblocking(False)
@@ -440,7 +441,7 @@ class TCPRelayHandler(object):
         except IOError as e:
             logging.error("remote sock read:%s", e)
         except Exception as e:
-            logging.debug("remote sock read:%s", e)
+            logging.debug("remote sock read:%s %s", e, o_fd)
             # TODO use logging when debug completed
             self.destroy(sock)
 
@@ -549,10 +550,6 @@ class TCPRelay(object):
         self._closed = False
         self._fd_to_handlers = {}
         self._consul_server = TTLDict()
-        if 'programname' in config:
-            self._programname = config['programname']
-        if 'local_log_dir' in config:
-            self._local_log_dir = config['local_log_dir']
 
         if is_local:
             listen_addr = config["local_address"]
