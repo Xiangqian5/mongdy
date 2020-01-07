@@ -186,6 +186,8 @@ class EventLoop(object):
                     try:
                         handler.handle_event(sock, fd, event)
                     except (OSError, IOError) as e:
+                        import traceback
+                        traceback.print_exc()
                         logging.error("poll handler:%s", e)
     def __del__(self):
         self._impl.close()

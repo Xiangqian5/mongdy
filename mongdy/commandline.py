@@ -108,7 +108,7 @@ class CommandLines():
                 self._exec_command(cmds, cwd)
         except Exception as e:
             print(e)
-            return e
+            return str(e)
 
         return ''.join(self._out_)
 

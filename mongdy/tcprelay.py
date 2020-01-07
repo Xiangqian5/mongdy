@@ -408,7 +408,7 @@ class TCPRelayHandler(object):
                 send = self._local_encryptor.encrypt(common.to_bytes(resp))
                 self._write_to_sock(send, sock)
             except Exception as e:
-                self._write_to_sock(common.to_bytes(e), sock)
+                self._write_to_sock(common.to_bytes(str(e)), sock)
 
     def _on_remote_read(self, sock):
         # handle all remote read events
