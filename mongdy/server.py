@@ -46,9 +46,10 @@ def main():
     loop = EventLoop()
     tcp_server.add_to_loop(loop)
 
-    p = multiprocessing.Process(target = consul_node, args=(config,))
-    p.daemon = True
-    p.start()
+    if config.get('consul', None):
+        p = multiprocessing.Process(target = consul_node, args=(config,))
+        p.daemon = True
+        p.start()
 
     loop.run()
 
