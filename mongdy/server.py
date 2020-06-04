@@ -46,7 +46,7 @@ def main():
     loop = EventLoop()
     tcp_server.add_to_loop(loop)
 
-    if config.get('consul', None):
+    if config.get('consul_reg', None):
         p = multiprocessing.Process(target = consul_node, args=(config,))
         p.daemon = True
         p.start()
